@@ -1,0 +1,11 @@
+# PaperDIY（16MB フラッシュ）用パーティション表
+#
+# font は日本語 TTF をそのまま置く場所で、esp_partition_mmap により
+# アドレス空間へ直接見えるので PSRAM を消費しない。tools/flash_font.sh で焼く。
+#
+# Name,     Type, SubType,  Offset,   Size,     Flags
+nvs,        data, nvs,      0x9000,   0x5000,
+app0,       app,  factory,  0x10000,  0x400000,
+font,       data, 0x40,     0x410000, 0x800000,
+storage,    data, spiffs,   0xC10000, 0x3E0000,
+coredump,   data, coredump, 0xFF0000, 0x10000,

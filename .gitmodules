@@ -1,0 +1,8 @@
+[submodule "freeink-sdk"]
+	path = freeink-sdk
+	url = https://github.com/Free-Ink/freeink-sdk.git
+	ignore = dirty
+[submodule "micropython"]
+	path = micropython
+	url = https://github.com/micropython/micropython.git
+	shallow = true

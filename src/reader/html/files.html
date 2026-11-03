@@ -1,0 +1,153 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PaperDIY</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.6 system-ui, sans-serif; margin: 0; padding: 16px;
+         max-width: 720px; margin-inline: auto; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .path { color: #777; font-size: 13px; margin-bottom: 16px; word-break: break-all; }
+  ul { list-style: none; padding: 0; margin: 0; border-top: 1px solid #8884; }
+  li { display: flex; align-items: center; gap: 10px;
+       padding: 10px 4px; border-bottom: 1px solid #8884; }
+  li a { flex: 1; text-decoration: none; color: inherit; word-break: break-all; }
+  li .size { color: #777; font-size: 13px; white-space: nowrap; }
+  button { font: inherit; padding: 4px 10px; border-radius: 6px;
+           border: 1px solid #8886; background: transparent; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  .drop { border: 2px dashed #8886; border-radius: 10px; padding: 24px;
+          text-align: center; margin: 20px 0; }
+  .drop.over { border-color: #4a90d9; }
+  progress { width: 100%; height: 8px; }
+  .msg { min-height: 1.6em; color: #777; font-size: 13px; }
+</style>
+
+<h1>PaperDIY</h1>
+<div class="path" id="path">/books</div>
+
+<div class="drop" id="drop">
+  ここに本をドロップ、または
+  <input type="file" id="pick" multiple hidden>
+  <button onclick="pick.click()">ファイルを選ぶ</button>
+  <div class="msg" id="msg"></div>
+  <progress id="bar" value="0" max="100" hidden></progress>
+</div>
+
+<ul id="list"></ul>
+
+<script>
+let cwd = "/books";
+
+function human(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + " KB";
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
+
+async function refresh() {
+  path.textContent = cwd;
+  const r = await fetch("/api/list?dir=" + encodeURIComponent(cwd));
+  const data = await r.json();
+  list.innerHTML = "";
+
+  if (cwd !== "/books") {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.href = "#";
+    a.textContent = "../";
+    a.onclick = (e) => {
+      e.preventDefault();
+      cwd = cwd.slice(0, cwd.lastIndexOf("/")) || "/books";
+      refresh();
+    };
+    li.append(a);
+    list.append(li);
+  }
+
+  for (const item of data.items || []) {
+    const li = document.createElement("li");
+    const a = document.createElement("a");
+    a.textContent = item.dir ? item.name + "/" : item.name;
+    if (item.dir) {
+      a.href = "#";
+      a.onclick = (e) => { e.preventDefault(); cwd = cwd + "/" + item.name; refresh(); };
+    } else {
+      a.href = "/api/get?path=" + encodeURIComponent(cwd + "/" + item.name);
+    }
+    const size = document.createElement("span");
+    size.className = "size";
+    size.textContent = item.dir ? "" : human(item.size);
+    const del = document.createElement("button");
+    del.textContent = "消す";
+    del.onclick = async () => {
+      if (!confirm(item.name + " を消しますか？")) return;
+      await fetch("/api/delete?path=" + encodeURIComponent(cwd + "/" + item.name),
+                  { method: "POST" });
+      refresh();
+    };
+    li.append(a, size, del);
+    list.append(li);
+  }
+}
+
+// 送信は WebSocket。HTTP のフォーム送信より速く、進み具合も出せる。
+function upload(file) {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket("ws://" + location.hostname + ":81/");
+    ws.binaryType = "arraybuffer";
+    let offset = 0;
+    const chunk = 4096;
+
+    ws.onopen = () => ws.send("START:" + file.name + ":" + file.size + ":" + cwd);
+    ws.onerror = () => reject(new Error("つながりません"));
+    ws.onmessage = (ev) => {
+      const text = String(ev.data);
+      if (text === "READY" || text.startsWith("PROGRESS:")) {
+        if (text.startsWith("PROGRESS:")) {
+          const [, got, total] = text.split(":");
+          bar.value = (got / total) * 100;
+        }
+        if (offset >= file.size) return;
+        const slice = file.slice(offset, offset + chunk);
+        slice.arrayBuffer().then((buf) => { ws.send(buf); offset += buf.byteLength; });
+      } else if (text === "DONE") {
+        ws.close();
+        resolve();
+      } else if (text.startsWith("ERROR:")) {
+        ws.close();
+        reject(new Error(text.slice(6)));
+      }
+    };
+  });
+}
+
+async function send(files) {
+  bar.hidden = false;
+  for (const file of files) {
+    msg.textContent = file.name + " を送っています…";
+    bar.value = 0;
+    try {
+      await upload(file);
+    } catch (e) {
+      msg.textContent = file.name + ": " + e.message;
+      bar.hidden = true;
+      return;
+    }
+  }
+  bar.hidden = true;
+  msg.textContent = "送りました";
+  refresh();
+}
+
+pick.onchange = () => send(pick.files);
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  send(e.dataTransfer.files);
+};
+
+refresh();
+</script>

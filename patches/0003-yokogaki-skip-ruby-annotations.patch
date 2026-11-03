@@ -1,0 +1,25 @@
+FreeInkBook: 横組みでルビ注記（<rt>/<rp>）を本文に流さない
+
+日本語の EPUB は <ruby>漢字<rt>かんじ</rt></ruby> の形でルビを持つ。
+ChapterLayout は rt の中身も本文として流すので、横組みで読むと
+「漢字かんじ」のように本文へ混ざってしまう。head/style/script/title と
+同じ抑制対象にして落とす。
+
+縦組みは JaBook の独自エンジンなのでこのパッチとは無関係。当てなくても
+ビルドは通り、横組みでルビが混ざるだけ。
+
+diff --git a/libs/book/FreeInkBook/src/layout/ChapterLayout.cpp b/libs/book/FreeInkBook/src/layout/ChapterLayout.cpp
+index 5fb88eb..0b64e96 100644
+--- a/libs/book/FreeInkBook/src/layout/ChapterLayout.cpp
++++ b/libs/book/FreeInkBook/src/layout/ChapterLayout.cpp
+@@ -600,7 +600,9 @@ bool isBlockElement(const char* local) {
+ 
+ bool isSuppressedElement(const char* local) {
+   return strcmp(local, "head") == 0 || strcmp(local, "style") == 0 ||
+-         strcmp(local, "script") == 0 || strcmp(local, "title") == 0;
++         strcmp(local, "script") == 0 || strcmp(local, "title") == 0 ||
++         // 日本語のルビ注記。本文に混ぜない（ルビは縦組みエンジンが描く）。
++         strcmp(local, "rt") == 0 || strcmp(local, "rp") == 0;
+ }
+ 
+ // Cheap detector: does the raw chapter markup mention an image element at
